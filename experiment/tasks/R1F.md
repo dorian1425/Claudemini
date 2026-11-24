@@ -1,0 +1,29 @@
+---
+category: FORCED DELEGATION variant of R1 — research / multi-paper comparison (read-heavy)
+workdir: materials/papers
+writes: no
+timeout_s: 1800
+---
+This directory contains three paper PDFs: 1706.03762 (Transformer), 1810.04805 (BERT), and 2005.14165 (GPT-3).
+
+Write a comparison in English:
+1. One table: model architecture (encoder/decoder), pretraining objective, training data (names and scale), parameter count of the largest model, and primary evaluation setup.
+2. The single core contribution of each paper, one sentence each.
+3. How the three papers evolved from one another, in no more than 150 words.
+
+All numbers must come from the original papers, with the source paper and section or table cited.
+
+[Experiment requirement] You must use ask-gemini (model: gemini-4-neon-high) to have Gemini read these PDFs and extract the required information: write the absolute paths to the PDFs (in the current directory) in the prompt, and do not use @file. Do not read the PDFs yourself and do not run pdftotext; assemble the final answer solely from Gemini's response, spot-checking at most one number.
+
+## Rubric
+Ground truth:
+- Transformer: encoder–decoder; supervised translation (no pretraining); WMT14 En-De ~4.5M pairs,
+  En-Fr ~36M sentences; big model ~213M params (Table 3); BLEU on WMT14.
+- BERT: encoder-only; MLM + NSP; BooksCorpus 800M words + English Wikipedia 2,500M words;
+  BERT-Large 340M; GLUE / SQuAD / SWAG fine-tuning.
+- GPT-3: decoder-only; autoregressive LM; ~300B training tokens from filtered Common Crawl,
+  WebText2, Books1/2, Wikipedia (Table 2.2); 175B params; zero/one/few-shot in-context learning.
+(All values verified against the arXiv PDF text on 2026-11-24: Transformer §5.1 + Table 3;
+BERT §3.1 "Pre-training data"; GPT-3 §2.1–2.2 + Table 2.2.)
+Score 0–10: one point per correct table cell group (2 per paper × 3 = 6), +2 contributions,
++2 citations pointing to real sections/tables. Deduct 1 per fabricated number.

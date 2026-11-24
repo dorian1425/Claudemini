@@ -1,0 +1,141 @@
+diff --git a/src/backends/agy.ts b/src/backends/agy.ts
+index 5f3d38e..8c84137 100644
+--- a/src/backends/agy.ts
++++ b/src/backends/agy.ts
+@@ -29,8 +29,8 @@ import type { Backend, BackendRunOptions } from "./types.js";
+  *     on-disk transcript (agyTranscript.ts). A failed print run descends the
+  *     ladder rather than aborting. As agy improves, capability probing shifts
+  *     us up the ladder with no code change.
+- *  2. Print-mode is hardcoded to Gemini 3.5 Flash; `--model` is ignored and
+- *     hangs if forced. supportsModelSelection is false; we never pass --model.
++ *  2. Print-mode was hardcoded to Gemini 3.5 Flash in 1.0.x (`--model` hung).
++ *     agy ≥1.1 honours `--model` in print-mode; capability probing detects this.
+  *  3. `@file` is not inlined by agy (it's agent-first). We inline files ourselves
+  *     so the project-root guard and determinism survive — and because inlined
+  *     prompts carry whole files, they ride on stdin to dodge OS argv limits.
+@@ -62,7 +62,7 @@ export function buildAgyArgs(opts: BackendRunOptions): string[] {
+   if (opts.approvalMode === APPROVAL_MODES.YOLO) {
+     args.push("--dangerously-skip-permissions");
+   }
+-  // Print mode is hardcoded to Flash — deliberately NO --model (it hangs -p).
++  // --model is forwarded in run() when capability probing confirms support.
+   return args;
+ }
+ 
+@@ -109,6 +109,7 @@ export const agyBackend: Backend = {
+       // stdout instead of scraping the transcript.
+       if (caps.outputFormatJson) baseArgs.push("--output-format", "json");
+       if (caps.printTimeout) baseArgs.push("--print-timeout", agyPrintTimeoutArg());
++      if (caps.modelSelection && opts.model) baseArgs.push("--model", opts.model);
+ 
+       // changeMode/@file prompts carry whole inlined files, easily exceeding
+       // the OS argv limits — route them via stdin, exactly as the gemini path
+diff --git a/src/backends/agyCapabilities.ts b/src/backends/agyCapabilities.ts
+index cec9263..bede15b 100644
+--- a/src/backends/agyCapabilities.ts
++++ b/src/backends/agyCapabilities.ts
+@@ -24,6 +24,8 @@ export interface AgyCapabilities {
+   continueFlag: boolean;
+   /** `--print-timeout` exists → headless runs can bound their own wait. */
+   printTimeout: boolean;
++  /** `--model` exists → print-mode honours model selection (agy ≥1.1). */
++  modelSelection: boolean;
+   /** Raw help text, kept for diagnostics. */
+   raw: string;
+ }
+@@ -33,6 +35,7 @@ export const NO_AGY_CAPABILITIES: AgyCapabilities = {
+   conversationId: false,
+   continueFlag: false,
+   printTimeout: false,
++  modelSelection: false,
+   raw: "",
+ };
+ 
+@@ -45,6 +48,7 @@ export function parseAgyHelp(help: string): AgyCapabilities {
+     conversationId: has(/--conversation\b/),
+     continueFlag: has(/--continue\b/) || has(/(^|\s)-c\b/),
+     printTimeout: has(/--print-timeout\b/),
++    modelSelection: has(/--model\b/),
+     raw: help,
+   };
+ }
+diff --git a/src/backends/index.ts b/src/backends/index.ts
+index df1f8d8..2e00137 100644
+--- a/src/backends/index.ts
++++ b/src/backends/index.ts
+@@ -3,6 +3,7 @@ import { Logger } from "../utils/logger.js";
+ import type { Backend, BackendRunOptions } from "./types.js";
+ import { geminiBackend } from "./gemini.js";
+ import { agyBackend } from "./agy.js";
++import { probeAgyCapabilities } from "./agyCapabilities.js";
+ 
+ export type { Backend, BackendRunOptions } from "./types.js";
+ export { geminiBackend } from "./gemini.js";
+@@ -100,7 +101,12 @@ export async function runWithBackend(
+   const { backend, notices } = backendSelection();
+   const effective: BackendRunOptions = { ...opts, onNotice: (m) => notices.push(m) };
+ 
+-  if (effective.model && !backend.supportsModelSelection) {
++  // agy ≥1.1 gained --model support; probe the installed build before gating.
++  const modelSupported =
++    backend.supportsModelSelection ||
++    (backend.name === "agy" && (await probeAgyCapabilities()).modelSelection);
++
++  if (effective.model && !modelSupported) {
+     notices.push(
+       `Backend "${backend.name}" ignores model selection (print-mode is ${MODELS.AGY_PRINT_DEFAULT}-only); "${effective.model}" was not applied.`,
+     );
+diff --git a/src/constants.ts b/src/constants.ts
+index c620751..0a60757 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -28,8 +28,8 @@ export const STATUS_MESSAGES = {
+ export const MODELS = {
+   PRO: "gemini-2.5-pro",
+   FLASH: "gemini-2.5-flash",
+-  // Antigravity CLI print-mode is hardcoded to Gemini 3.5 Flash (High). This is
+-  // informational only — `agy -p` ignores `--model` (and hangs if forced).
++  // Antigravity CLI print-mode default when no --model is passed (1.0.x was
++  // hard-locked to this; ≥1.1 honours --model, detected via capability probing).
+   AGY_PRINT_DEFAULT: "gemini-3.5-flash",
+ } as const;
+ 
+diff --git a/test/unit/backends/agyOutput.test.ts b/test/unit/backends/agyOutput.test.ts
+index 6149997..44aea35 100644
+--- a/test/unit/backends/agyOutput.test.ts
++++ b/test/unit/backends/agyOutput.test.ts
+@@ -17,18 +17,21 @@ describe("Backends: agy capability probing (Phase 3)", () => {
+       "  --conversation <id>      resume a specific conversation",
+       "  -c, --continue           continue the most recent conversation",
+       "  --print-timeout <ms>     bound a headless run",
++      "  --model                  Model for the current CLI session",
+     ].join("\n");
+     const caps = parseAgyHelp(help);
+     assert.equal(caps.outputFormatJson, true);
+     assert.equal(caps.conversationId, true);
+     assert.equal(caps.continueFlag, true);
+     assert.equal(caps.printTimeout, true);
++    assert.equal(caps.modelSelection, true);
+   });
+ 
+   test("a 1.0.x help with no json mode yields the conservative defaults", () => {
+     const caps = parseAgyHelp("Usage: agy\n  -p, --prompt <text>\n  -i  interactive login");
+     assert.equal(caps.outputFormatJson, false);
+     assert.equal(caps.printTimeout, false);
++    assert.equal(caps.modelSelection, false);
+   });
+ 
+   test("empty help is treated as no capabilities", () => {
+diff --git a/test/unit/backends/index.test.ts b/test/unit/backends/index.test.ts
+index a2d1154..6b4ccf4 100644
+--- a/test/unit/backends/index.test.ts
++++ b/test/unit/backends/index.test.ts
+@@ -63,7 +63,7 @@ describe("Backends: selection", () => {
+   test("capability flags reflect each CLI's reality", () => {
+     assert.equal(geminiBackend.supportsModelSelection, true);
+     assert.equal(geminiBackend.sandboxIsolatesToolExecution, true);
+-    // agy print-mode is Flash-only and does not isolate tool execution.
++    // agy's static flag is false; runWithBackend() overrides dynamically via probing.
+     assert.equal(agyBackend.supportsModelSelection, false);
+     assert.equal(agyBackend.sandboxIsolatesToolExecution, false);
+   });

@@ -1,0 +1,85 @@
+#!/bin/bash
+# ask-claude — lets Gemini (agy) hand a task to Claude Code and get back
+# Claude's result plus any objections to Gemini's instructions.
+#
+# Usage:
+#   ask-claude [--write] [--dir PATH] "task text"
+#   echo "task text" | ask-claude [--write] [--dir PATH]
+#
+#   --write   allow Claude to edit files inside the working directory
+#             (default: read-only — Claude can read/search but not change files)
+#   --dir     working directory for Claude (default: current directory)
+
+set -euo pipefail
+
+# Loop guard: refuse when called from inside a Claude->Gemini delegation, or
+# from a Claude that ask-claude itself started.
+if [ "${GEMINI_DELEGATED:-}" = "1" ] || [ "${ASK_CLAUDE_ACTIVE:-}" = "1" ]; then
+  echo "ask-claude: refused — this Gemini run was started by Claude (or by ask-claude). Answer the task yourself instead of calling Claude back." >&2
+  exit 3
+fi
+
+WRITE=0
+WORKDIR="$PWD"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --write) WRITE=1; shift ;;
+    --dir) WORKDIR="$2"; shift 2 ;;
+    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+
+if [ $# -gt 0 ]; then
+  TASK="$*"
+elif [ ! -t 0 ]; then
+  TASK="$(cat)"
+else
+  echo "ask-claude: no task given" >&2
+  exit 2
+fi
+[ -n "${TASK// /}" ] || { echo "ask-claude: empty task" >&2; exit 2; }
+
+read -r -d '' CONTRACT <<'EOF' || true
+You are working for another AI agent (Gemini), not directly for a human. Gemini
+planned this task and is delegating it to you. Rules:
+
+1. Do the task as asked, using your own tools.
+2. You are a peer, not a subordinate. If Gemini's instructions, assumptions,
+   facts, or plan are wrong, risky, or worse than an alternative, say so
+   plainly — even if you still carry out the parts that are sound. Never
+   silently "fix" Gemini's mistakes; name them.
+3. Do not call Gemini or any other agent. Do the work yourself.
+4. End your reply with exactly these sections, in this order:
+
+## Result
+What you did or found. Concrete: file paths, commands, numbers.
+
+## Objections
+Each point where Gemini was wrong or could do better: what Gemini said,
+why it is wrong, and what is right instead. Write "None." if you agree with
+everything.
+
+## Unverified
+Anything you could not check or finish. Write "None." if nothing.
+
+Keep it terse — Gemini will rewrite this for the human in its own words.
+EOF
+
+if [ "$WRITE" = "1" ]; then
+  # Edits inside the working directory are auto-approved; other commands that
+  # need approval are denied (there is no human to ask in print mode).
+  PERMS=(--permission-mode acceptEdits)
+else
+  PERMS=(--permission-mode default --disallowedTools Edit Write NotebookEdit)
+fi
+
+cd "$WORKDIR"
+export ASK_CLAUDE_ACTIVE=1
+exec claude -p "$TASK" \
+  --model opus \
+  "${PERMS[@]}" \
+  --strict-mcp-config \
+  --append-system-prompt "$CONTRACT" \
+  --output-format text

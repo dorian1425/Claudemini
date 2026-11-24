@@ -1,0 +1,27 @@
+E4-A-r1: ok=1 cost=$0.359531 out=755 turns=5 gemini_calls=0 15.3s
+E4-B-r1: ok=1 cost=$0.1824658 out=715 turns=5 gemini_calls=0 15.7s
+E1-A-r1: ok=1 cost=$0.2494886 out=2996 turns=4 gemini_calls=0 36.0s
+E1-B-r1: ok=1 cost=$0.2625734 out=2926 turns=4 gemini_calls=1 148.9s
+E3-A-r1: ok=1 cost=$0.19390459999999998 out=2474 turns=4 gemini_calls=0 31.0s
+E3-B-r1: ok=1 cost=$0.2688366 out=4186 turns=5 gemini_calls=1 179.4s
+R1-A-r1: ok=1 cost=$0.2340236 out=2635 turns=7 gemini_calls=0 32.2s
+R1-B-r1: ok=1 cost=$0.31552220000000003 out=4846 turns=11 gemini_calls=2 314.2s
+R2-A-r1: ok=1 cost=$0.23397100000000004 out=3368 turns=6 gemini_calls=0 100.5s
+R2-B-r1: ok=1 cost=$0.266173 out=3729 turns=9 gemini_calls=1 132.8s
+R3-A-r1: ok=1 cost=$0.39173519999999995 out=7218 turns=12 gemini_calls=0 335.1s
+R3-B-r1: ok=1 cost=$0.4110478 out=7826 turns=10 gemini_calls=3 1267.4s
+# Results
+
+Primary metric: **neutral tokens** = all input tokens (fresh + cache write + cache read) + 5 × output tokens, median over successful reps. It ignores which run happened to warm the prompt cache. `$` is Claude's billed-equivalent cost and IS cache-sensitive. Gemini usage is not included — it runs on your Antigravity quota.
+
+| Task | A neutral | B neutral | B/A | A out | B out | A $ | B $ | B gemini calls | A time | B time |
+|---|---|---|---|---|---|---|---|---|---|---|
+| E1 | 178,030 | 186,456 | 1.05 | 2,996 | 2,926 | 0.249 | 0.263 | 1 | 36s | 149s |
+| E2 | 162,331 | 125,905 | 0.78 | 1,450 | 1,454 | 0.369 | 0.195 | 0 | 42s | 38s |
+| E3 | 129,879 | 226,617 | 1.74 | 2,474 | 4,186 | 0.194 | 0.269 | 1 | 31s | 179s |
+| E4 | 160,864 | 200,441 | 1.25 | 755 | 715 | 0.360 | 0.182 | 0 | 15s | 16s |
+| R1 | 209,491 | 364,666 | 1.74 | 2,635 | 4,846 | 0.234 | 0.316 | 2 | 32s | 314s |
+| R2 | 251,290 | 377,696 | 1.50 | 3,368 | 3,729 | 0.234 | 0.266 | 1 | 100s | 133s |
+| R3 | 529,599 | 416,299 | 0.79 | 7,218 | 7,826 | 0.392 | 0.411 | 3 | 335s | 1,267s |
+
+**Paired total (neutral tokens):** A 1,621,484 vs B 1,898,080 → B/A = 1.17

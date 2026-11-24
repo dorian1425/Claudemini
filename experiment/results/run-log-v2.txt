@@ -1,0 +1,4 @@
+E1-B-r2: ok=1 cost=$0.26114580000000004 out=3403 turns=7 gemini_calls=0 118.1s
+E1-A-r2: ok=1 cost=$0.22913460000000002 out=3489 turns=4 gemini_calls=0 176.5s
+R1-B-r2: ok=1 cost=$0.333488 out=4354 turns=7 gemini_calls=1 702.5s
+R1-A-r2: ok=1 cost=$0.2044048 out=2384 turns=8 gemini_calls=0 32.6s

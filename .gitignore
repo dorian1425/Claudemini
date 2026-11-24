@@ -1,0 +1,9 @@
+.DS_Store
+*.bak.*
+experiment/materials/
+experiment/results/work/
+experiment/results/raw/*.jsonl
+experiment/results/raw/*.stderr.txt
+experiment/results/gemini-mcp.json
+__pycache__/
+components/
